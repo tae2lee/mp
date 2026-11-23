@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -9,20 +10,21 @@ import '../models.dart';
 import '../sample_data.dart' show roomSeeds;
 import '../widgets.dart';
 
-/// 열람실 좌석 (Figma 04). 30초마다 자동 갱신, 두 손가락으로 배치도 확대.
+/// 열람실 좌석 (Figma 04). 30초마다 자동 갱신. 큰 열람실은 배치도를 밀어서 보거나 확대
 class SeatsScreen extends StatefulWidget {
-  const SeatsScreen({super.key, this.roomId = '3'});
+  const SeatsScreen({super.key, this.roomId = '1', this.onBack});
   final String roomId;
+  final VoidCallback? onBack;
 
   @override
-  State<SeatsScreen> createState() => _SeatsScreenState();
+  State<SeatsScreen> createState() => SeatsScreenState();
 }
 
-class _SeatsScreenState extends State<SeatsScreen> {
+class SeatsScreenState extends State<SeatsScreen> {
   final repo = LibraryRepository.instance;
   late String _roomId = widget.roomId;
   late Future<RoomDetail> _detail;
-  late Future<List<ReadingRoom>> _rooms;
+  List<ReadingRoom> _roomList = const [];
   int? _selected;
   Timer? _timer;
   MySeat? _lastMySeat;
@@ -52,53 +54,45 @@ class _SeatsScreenState extends State<SeatsScreen> {
 
   void _load() {
     _detail = repo.room(_roomId);
-    _rooms = repo.rooms();
+    repo.rooms().then((r) {
+      if (mounted) setState(() => _roomList = r);
+    });
   }
 
-  void _selectRoom(String id) => setState(() {
-        _roomId = id;
-        _selected = null;
-        _load();
-      });
+  /// 홈에서 열람실을 눌렀을 때 그 방으로 바꿈
+  void selectRoom(String id) {
+    if (id == _roomId) return;
+    setState(() {
+      _roomId = id;
+      _selected = null;
+      _load();
+    });
+  }
+
+  List<(String, String)> get _tabs => _roomList.isNotEmpty
+      ? [for (final r in _roomList) (r.id, r.shortName)]
+      : [for (final s in roomSeeds) (s.id, s.name)];
+
+  String _roomName(String id) => _tabs.where((t) => t.$1 == id).firstOrNull?.$2 ?? '';
 
   @override
   Widget build(BuildContext context) {
+    final tabs = _tabs;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('열람실 좌석'),
-        actions: [IconButton(tooltip: '새로고침', icon: const Icon(Icons.refresh), onPressed: () => setState(_load))],
-      ),
-      body: Column(children: [
-        // 열람실 선택 (잔여 좌석 수 함께 표시)
-        SizedBox(
-          height: 56,
-          child: FutureBuilder<List<ReadingRoom>>(
-            future: _rooms,
-            builder: (context, snap) {
-              // 좌석 서버의 열람실 목록을 쓰고, 불러오기 전에는 기본 목록으로 칩만 먼저 보여 줌
-              final rooms = snap.data;
-              final chips = rooms != null && rooms.isNotEmpty
-                  ? [for (final r in rooms) (r.id, r.shortName, '${r.free}')]
-                  : [for (final s in roomSeeds) (s.id, s.name.replaceAll(' 학습 ZONE', ''), '')];
-              return ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                children: [
-                  for (final (id, name, free) in chips)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(free.isEmpty ? name : '$name $free'),
-                        selected: id == _roomId,
-                        onSelected: (_) => _selectRoom(id),
-                      ),
-                    ),
-                ],
-              );
-            },
+      backgroundColor: LC.bg,
+      body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        LibHeader(children: [
+          TitleBar(
+            '열람실 좌석',
+            onBack: widget.onBack,
+            trailing: IconBox('refresh_24', tooltip: '새로고침', onTap: () => setState(_load)),
           ),
-        ),
-        const OfflineBanner(),
+          UnderlineTabs(
+            labels: [for (final t in tabs) t.$2],
+            index: math.max(0, tabs.indexWhere((t) => t.$1 == _roomId)),
+            onChanged: (i) => selectRoom(tabs[i].$1),
+          ),
+        ]),
         Expanded(
           child: FutureBuilder<RoomDetail>(
             future: _detail,
@@ -106,90 +100,95 @@ class _SeatsScreenState extends State<SeatsScreen> {
               if (snap.hasError) {
                 return EmptyState(icon: Icons.event_seat_outlined, title: '좌석 정보를 불러오지 못했어요', message: '${snap.error}', onRetry: () => setState(_load));
               }
-              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-              final d = snap.data!;
-              return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), children: [
-                _Summary(detail: d),
-                const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('좌석 배치도', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                      if (!d.exactLayout)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text('이 열람실의 좌석 배치는 예시예요. 좌석 번호와 사용 여부는 실제와 같아요.',
-                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
-                        ),
-                      const SizedBox(height: 12),
-                      SeatMap(
-                        seats: d.seats,
-                        selected: _selected,
-                        selectable: repo.mySeat == null,
-                        onSeatTap: (no) => setState(() => _selected = _selected == no ? null : no),
-                      ),
-                      const SizedBox(height: 12),
-                      const _Legend(),
+              final d = snap.data;
+              if (d == null) return const Center(child: CircularProgressIndicator(color: LC.primary, strokeWidth: 2.5));
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(
+                  child: ListView(padding: const EdgeInsets.fromLTRB(16, 20, 16, 20), children: [
+                    Gap(16, children: [
+                      if (repo.lastError != null) const OfflineBanner(),
+                      _Summary(detail: d),
+                      _mapCard(d),
                     ]),
-                  ),
+                  ]),
                 ),
+                _cta(d),
               ]);
             },
           ),
         ),
       ]),
-      bottomNavigationBar: _bottomBar(context),
     );
   }
 
-  Widget _bottomBar(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _mapCard(RoomDetail d) {
+    final nums = d.seats.map((s) => s.no);
+    Widget landmark(String text, Color fg, Color bg) => Box(
+          color: bg,
+          radius: 6,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          alignment: Alignment.center,
+          child: Text(text, style: ts(11, w7, fg)),
+        );
+    return CardBox(
+      child: Gap(14, children: [
+        Row(children: [
+          Expanded(child: Text('${d.zone ?? d.room.shortName} 좌석 배치도', style: ts(16, w7, LC.ink, ls: -0.16))),
+          if (nums.isNotEmpty) Text('${nums.reduce(math.min)} ~ ${nums.reduce(math.max)}번', style: ts(12.5, w5, LC.mute, ls: -0.125)),
+        ]),
+        if (d.zone != null) landmark('창가', LC.blue, LC.blueSoft),
+        SeatMap(
+          seats: d.seats,
+          selected: _selected,
+          selectable: repo.mySeat == null,
+          onSeatTap: (no) => setState(() => _selected = _selected == no ? null : no),
+        ),
+        if (d.zone != null) landmark('출입구', LC.green, LC.greenSoft),
+        const _Legend(),
+      ]),
+    );
+  }
+
+  /// Figma SeatCTA: 선택한 좌석 + 좌석 배정받기
+  Widget _cta(RoomDetail d) {
     final mine = repo.mySeat;
-    final Widget label;
+    final String caption, title;
     final Widget button;
     if (mine != null) {
-      label = _twoLine(context, '내 좌석', '${mine.no}번 · ${hhmm(mine.at)}부터');
-      button = OutlinedButton(
-        onPressed: () async {
-          await repo.releaseSeat();
-          if (context.mounted) showMessage(context, '내 좌석 표시를 지웠어요. 반납은 키오스크에서 해 주세요.');
-        },
-        child: const Text('표시 지우기'),
-      );
-    } else if (_selected != null) {
-      label = _twoLine(context, '선택한 좌석', '$_selected번');
-      button = FilledButton(
-        onPressed: () async {
-          final no = _selected!;
-          await repo.assignSeat(_roomId, no);
-          _selected = null;
-          // 좌석 서버는 조회만 받으므로 실제 배정은 키오스크에서 해야 한다
-          if (context.mounted) showMessage(context, '$no번을 내 좌석으로 표시했어요. 배정은 도서관 키오스크에서 해 주세요.');
-        },
-        child: const Text('내 좌석으로 표시'),
-      );
+      caption = '내 좌석 · ${hhmm(mine.at)}부터';
+      title = '${_roomName(mine.roomId)} ${mine.roomId == _roomId ? d.seatLabel(mine.no) : '${mine.no}'}번';
+      button = Btn('퇴실하기', kind: BtnKind.outline, onTap: () async {
+        await repo.releaseSeat();
+        if (mounted) showMessage(context, '내 좌석 표시를 지웠어요. 반납은 키오스크에서 해 주세요.');
+      });
     } else {
-      label = Text('초록색 좌석을 누르면 선택돼요', style: TextStyle(color: cs.onSurfaceVariant));
-      button = const FilledButton(onPressed: null, child: Text('내 좌석으로 표시'));
+      caption = '선택한 좌석';
+      title = _selected == null ? '좌석을 눌러 선택해 주세요' : '${d.room.shortName} ${d.seatLabel(_selected!)}번';
+      button = Btn('좌석 배정받기', onTap: _selected == null
+          ? null
+          : () async {
+              final no = _selected!;
+              await repo.assignSeat(_roomId, no);
+              _selected = null;
+              // 좌석 서버는 조회만 받으므로 실제 배정은 키오스크에서 해야 한다
+              if (mounted) showMessage(context, '$no번 좌석을 내 좌석으로 표시했어요. 배정은 도서관 키오스크에서 해 주세요.');
+            });
     }
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(color: cs.surface, border: Border(top: BorderSide(color: cs.outlineVariant))),
-        padding: const EdgeInsets.fromLTRB(20, 10, 16, 10),
-        child: Row(children: [Expanded(child: label), button]),
-      ),
+    return Container(
+      decoration: const BoxDecoration(color: LC.white, border: Border(top: BorderSide(color: LC.line))),
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(caption, style: ts(12, w5, LC.sub, ls: -0.12)),
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(16, w7, _selected == null && mine == null ? LC.mute : LC.ink, ls: -0.16)),
+          ]),
+        ),
+        const SizedBox(width: 12),
+        button,
+      ]),
     );
   }
-
-  Widget _twoLine(BuildContext context, String a, String b) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(a, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-          Text(b, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        ],
-      );
 }
 
 class _Summary extends StatelessWidget {
@@ -199,47 +198,41 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = detail.room;
-    final cs = Theme.of(context).colorScheme;
-    final color = congestionColor(context, r.congestion);
+    final color = congestionColor(r.congestion);
     final open = r.isOpenAt(DateTime.now());
-    Widget row(String k, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(children: [
-            Expanded(child: Text(k, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))),
-            Text(v, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+    Widget row(String k, String v) => Row(children: [
+          Expanded(child: Text(k, style: ts(13, w4, LC.sub, ls: -0.13))),
+          Text(v, style: ts(13, w7, LC.ink, ls: -0.13)),
+        ]);
+    return Box(
+      color: LC.white,
+      radius: 18,
+      padding: const EdgeInsets.all(20),
+      child: Row(children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Text('${r.free}', style: ts(44, w9, color, height: 1.1, ls: -0.88)),
+            const SizedBox(width: 2),
+            Text('석', style: ts(16, w7, color, ls: -0.16)),
           ]),
-        );
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(children: [
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text.rich(TextSpan(children: [
-              TextSpan(text: '${r.free}', style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: color, height: 1.1)),
-              TextSpan(text: '석', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color)),
-            ])),
-            Text(open ? '지금 앉을 수 있어요' : '지금은 운영시간이 아니에요',
-                style: TextStyle(color: open ? cs.onSurfaceVariant : context.status.warn, fontSize: 13)),
-          ]),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(r.tag == null ? r.name : '${r.name} · ${r.tag}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              row('전체 좌석', '${r.total}석'),
-              row('사용 좌석', '${r.used}석'),
-              row('이용률', '${(r.rate * 100).toStringAsFixed(1)}%'),
-              if (r.hours != null) row(r.floor == null ? '운영 시간' : '운영 시간 (${r.floor})', r.hours!),
-              row('기준 시각', hhmm(detail.updatedAt)),
-            ]),
-          ),
+          Text(open ? '지금 앉을 수 있어요' : '지금은 운영시간이 아니에요', style: ts(12.5, w5, open ? LC.sub : LC.amber, ls: -0.125)),
         ]),
-      ),
+        const SizedBox(width: 20),
+        Container(width: 1, height: 64, color: LC.line),
+        const SizedBox(width: 20),
+        Expanded(
+          child: Gap(6, children: [
+            row('전체 좌석', '${r.total}석'),
+            row('이용 중', '${r.used}석'),
+            if (r.hours != null) row('운영 시간', r.hours!),
+          ]),
+        ),
+      ]),
     );
   }
 }
 
-/// 좌석 배치도. 좌표(x, y)는 좌석 1칸 단위. InteractiveViewer 로 확대·이동.
+/// 좌석 배치도. 좌표 1칸 = 좌석 30 + 간격 6. 카드보다 넓으면 밀어서 보고 두 손가락으로 확대
 class SeatMap extends StatelessWidget {
   const SeatMap({super.key, required this.seats, required this.onSeatTap, this.selected, this.selectable = true});
   final List<Seat> seats;
@@ -247,96 +240,87 @@ class SeatMap extends StatelessWidget {
   final bool selectable;
   final ValueChanged<int> onSeatTap;
 
+  static const _unit = 36.0, _seat = 30.0;
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final sc = context.status;
     if (seats.isEmpty) return const EmptyState(icon: Icons.event_seat_outlined, title: '좌석 정보가 없어요');
     // 캐럴실처럼 세로 한 줄로만 놓인 방은 가로로 눕혀서 보여 준다
-    final rawW = seats.map((s) => s.x ?? 0).reduce((a, b) => a > b ? a : b) + 1;
-    final rawH = seats.map((s) => s.y ?? 0).reduce((a, b) => a > b ? a : b) + 1;
-    final turn = rawH > rawW * 3;
-    double px(Seat s) => (turn ? s.y : s.x) ?? 0;
-    double py(Seat s) => (turn ? s.x : s.y) ?? 0;
-    final maxX = turn ? rawH : rawW;
-    final maxY = turn ? rawW : rawH;
+    final rawW = seats.map((s) => s.x ?? 0.0).reduce(math.max);
+    final rawH = seats.map((s) => s.y ?? 0.0).reduce(math.max);
+    final turn = rawH > (rawW + 1) * 3;
+    double px(Seat s) => (turn ? s.y : s.x) ?? 0.0;
+    double py(Seat s) => (turn ? s.x : s.y) ?? 0.0;
+    final w = (turn ? rawH : rawW) * _unit + _seat;
+    final h = (turn ? rawW : rawH) * _unit + _seat;
 
-    return LayoutBuilder(builder: (context, constraints) {
-      // 화면 폭에 맞추되 너무 작아지지 않게. 더 크게 보려면 두 손가락으로 확대
-      final unit = (constraints.maxWidth / maxX).clamp(18.0, 44.0).toDouble();
-      final w = maxX * unit, h = maxY * unit;
-      return Container(
-        height: h.clamp(160.0, 420.0).toDouble(),
-        decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-        child: InteractiveViewer(
-          constrained: false,
-          minScale: 1,
-          maxScale: 3,
-          boundaryMargin: const EdgeInsets.all(24),
-          child: SizedBox(
-            width: w,
-            height: h,
-            child: Stack(children: [
-              for (final s in seats)
-                Positioned(
-                  left: px(s) * unit,
-                  top: py(s) * unit,
-                  width: unit - 3,
-                  height: unit - 3,
-                  child: _SeatButton(
-                    seat: s,
-                    selected: s.no == selected,
-                    enabled: selectable && s.status == SeatStatus.available,
-                    fontSize: s.no >= 100 ? unit * 0.3 : unit * 0.36,
-                    colors: (available: sc.good, used: sc.seatUsed, off: sc.seatOff, mine: sc.info, selected: cs.onSurface, onSelected: cs.surface, ring: cs.primary),
-                    onTap: () => onSeatTap(s.no),
-                  ),
-                ),
-            ]),
+    final map = SizedBox(
+      width: w,
+      height: h,
+      child: Stack(children: [
+        for (final s in seats)
+          Positioned(
+            left: px(s) * _unit,
+            top: py(s) * _unit,
+            child: _SeatBox(
+              seat: s,
+              selected: s.no == selected,
+              enabled: selectable && s.status == SeatStatus.available,
+              onTap: () => onSeatTap(s.no),
+            ),
+          ),
+      ]),
+    );
+
+    return LayoutBuilder(builder: (context, k) {
+      if (w <= k.maxWidth && h <= 480) return Center(child: map);
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SizedBox(
+          height: math.min(h, 420.0),
+          child: ClipRect(
+            child: InteractiveViewer(
+              constrained: false,
+              minScale: 0.4,
+              maxScale: 2.5,
+              boundaryMargin: const EdgeInsets.all(12),
+              child: map,
+            ),
           ),
         ),
-      );
+        const SizedBox(height: 8),
+        Text('밀어서 옆 좌석을 보고, 두 손가락으로 확대할 수 있어요', textAlign: TextAlign.center, style: ts(12, w5, LC.mute)),
+      ]);
     });
   }
 }
 
-typedef _SeatColors = ({Color available, Color used, Color off, Color mine, Color selected, Color onSelected, Color ring});
-
-class _SeatButton extends StatelessWidget {
-  const _SeatButton({required this.seat, required this.selected, required this.enabled, required this.fontSize, required this.colors, required this.onTap});
+class _SeatBox extends StatelessWidget {
+  const _SeatBox({required this.seat, required this.selected, required this.enabled, required this.onTap});
   final Seat seat;
   final bool selected, enabled;
-  final double fontSize;
-  final _SeatColors colors;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final (bg, fg, label) = selected
-        ? (colors.selected, colors.onSelected, '선택됨')
+    final (Color bg, Color fg, BorderSide? border, String label) = selected || seat.status == SeatStatus.mine
+        ? (LC.primary, LC.white, null, selected ? '선택됨' : '내 좌석')
         : switch (seat.status) {
-            SeatStatus.available => (colors.available, Colors.white, '이용 가능'),
-            SeatStatus.used => (colors.used, Colors.white, '이용중'),
-            SeatStatus.unavailable => (colors.off, Colors.black54, '이용 불가'),
-            SeatStatus.mine => (colors.mine, Colors.white, '내 좌석'),
+            SeatStatus.available => (LC.white, LC.green, const BorderSide(color: LC.green, width: 1.5), '선택 가능'),
+            SeatStatus.used => (LC.seatUsed, LC.mute, null, '사용 중'),
+            _ => (LC.bg, LC.seatUsed, null, '이용 불가'),
           };
     return Semantics(
       button: enabled,
       label: '${seat.no}번 $label',
-      child: Material(
+      child: Box(
+        width: 30,
+        height: 30,
+        radius: 7,
         color: bg,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
-          side: selected ? BorderSide(color: colors.ring, width: 2) : BorderSide.none,
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: enabled ? onTap : null,
-          child: Center(
-            child: Text('${seat.no}', style: TextStyle(color: fg, fontSize: fontSize, fontWeight: FontWeight.w700), textScaler: TextScaler.noScaling),
-          ),
-        ),
+        border: border,
+        alignment: Alignment.center,
+        onTap: enabled ? onTap : null,
+        child: Text('${seat.no}', style: ts(10.5, w7, fg, height: 1), textScaler: TextScaler.noScaling, maxLines: 1),
       ),
     );
   }
@@ -347,17 +331,15 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sc = context.status;
-    Widget item(Color c, String t) => Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 12, height: 12, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+    Widget item(Color c, String t, {BorderSide? border}) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Box(width: 14, height: 14, radius: 4, color: c, border: border, child: const SizedBox()),
           const SizedBox(width: 6),
-          Text(t, style: const TextStyle(fontSize: 12)),
+          Text(t, style: ts(12, w5, LC.sub)),
         ]);
-    return Wrap(alignment: WrapAlignment.center, spacing: 14, runSpacing: 6, children: [
-      item(sc.good, '이용 가능'),
-      item(sc.seatUsed, '이용중'),
-      item(sc.seatOff, '이용 불가'),
-      item(sc.info, '내 좌석'),
+    return Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 6, children: [
+      item(LC.white, '선택 가능', border: const BorderSide(color: LC.green)),
+      item(LC.seatUsed, '사용 중'),
+      item(LC.primary, '선택한 좌석'),
     ]);
   }
 }

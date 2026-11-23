@@ -3,133 +3,188 @@ import 'package:flutter/material.dart';
 import '../library_colors.dart';
 import '../library_repository.dart';
 import '../library_tab.dart' show renewWithMessage;
+import '../models.dart';
 import '../widgets.dart';
 import 'book_detail_screen.dart';
+import 'notices_screen.dart';
 
-/// 내 서재 (Figma 06). 기존 메뉴의 영어 "My Library"를 한국어로 바꿈 (개선점 4-17).
-class MyLibraryScreen extends StatelessWidget {
-  const MyLibraryScreen({super.key});
+/// 내 서재 (Figma 06): 대출 중 · 예약 · 대출 이력
+class MyLibraryScreen extends StatefulWidget {
+  const MyLibraryScreen({super.key, this.onBack});
+  final VoidCallback? onBack;
+
+  @override
+  State<MyLibraryScreen> createState() => _MyLibraryScreenState();
+}
+
+class _MyLibraryScreenState extends State<MyLibraryScreen> {
+  int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
     final repo = LibraryRepository.instance;
-    final cs = Theme.of(context).colorScheme;
     return ListenableBuilder(
       listenable: repo,
       builder: (context, _) {
         final loans = repo.loans, resv = repo.reservations;
-        final favs = [for (final id in repo.favorites) ?repo.bookById(id)];
-        return DefaultTabController(
-          length: 3,
-          child: Scaffold(
-            appBar: AppBar(
-              title: const Text('내 서재'),
-              bottom: TabBar(tabs: [
-                Tab(text: '대출 중 ${loans.length}'),
-                Tab(text: '예약 ${resv.length}'),
-                Tab(text: '관심도서 ${favs.length}'),
-              ]),
-            ),
-            body: Column(children: [
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: context.status.infoContainer, borderRadius: BorderRadius.circular(12)),
+        return Scaffold(
+          backgroundColor: LC.bg,
+          body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            LibHeader(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                 child: Row(children: [
-                  Icon(Icons.info_outline, size: 18, color: context.status.info),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('도서관 계정 연동 전이라 대출·예약은 샘플 기록이에요.', style: TextStyle(color: context.status.info, fontSize: 13))),
+                  Expanded(child: Text('내 서재', style: ts(24, w9, LC.ink, ls: -0.48))),
+                  IconBox('bell_24', box: 32, tooltip: '공지사항', onTap: () => pushLibrary<void>(context, const NoticesScreen())),
                 ]),
               ),
-              Expanded(
-                child: TabBarView(children: [
-                  // 대출 중
-                  loans.isEmpty
-                      ? const EmptyState(icon: Icons.menu_book_outlined, title: '대출 중인 책이 없어요')
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: loans.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 12),
-                          itemBuilder: (context, i) {
-                            final l = loans[i];
-                            final urgent = daysUntil(l.due) <= 3;
-                            final span = l.due.difference(l.loanedAt).inDays.clamp(1, 365).toInt();
-                            final passed = DateTime.now().difference(l.loanedAt).inDays.clamp(0, span).toInt();
-                            return Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  InkWell(
-                                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookDetailScreen(book: l.book))),
-                                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                      BookCover(l.book, width: 60),
-                                      const SizedBox(width: 14),
-                                      Expanded(
-                                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                          StatusBadge(ddayText(l.due),
-                                              color: urgent ? cs.primary : cs.onSurfaceVariant,
-                                              background: urgent ? cs.primaryContainer : cs.surfaceContainerHigh,
-                                              dot: false),
-                                          const SizedBox(height: 6),
-                                          Text(l.book.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                                          const SizedBox(height: 2),
-                                          Text('대출 ${mmdd(l.loanedAt)} · 반납예정 ${mmddWd(l.due)}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-                                        ]),
-                                      ),
-                                    ]),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  LinearProgressIndicator(
-                                    value: passed / span,
-                                    minHeight: 6,
-                                    borderRadius: BorderRadius.circular(3),
-                                    color: urgent ? cs.primary : context.status.good,
-                                    backgroundColor: cs.surfaceContainerHigh,
-                                    semanticsLabel: '대출 기간 경과',
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Row(children: [
-                                    Expanded(child: Text('연장 ${l.renewLeft}회 남음', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))),
-                                    urgent
-                                        ? FilledButton(onPressed: l.renewLeft > 0 ? () => renewWithMessage(context, l) : null, child: const Text('연장하기'))
-                                        : OutlinedButton(onPressed: l.renewLeft > 0 ? () => renewWithMessage(context, l) : null, child: const Text('연장하기')),
-                                  ]),
-                                ]),
-                              ),
-                            );
-                          },
-                        ),
-                  // 예약
-                  resv.isEmpty
-                      ? const EmptyState(icon: Icons.bookmark_border, title: '예약한 책이 없어요')
-                      : ListView(padding: const EdgeInsets.all(16), children: [
-                          for (final r in resv)
-                            Card(
-                              child: ListTile(
-                                leading: BookCover(r.book, width: 40),
-                                title: Text(r.book.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                subtitle: Text('${r.campus.label} · 대기 ${r.order}번 · 반납되면 알려드려요'),
-                              ),
-                            ),
-                        ]),
-                  // 관심도서
-                  favs.isEmpty
-                      ? const EmptyState(icon: Icons.star_border, title: '관심도서가 없어요', message: '도서 상세에서 별표를 누르면 여기에 모여요')
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: favs.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (context, i) => BookTile(
-                            book: favs[i],
-                            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookDetailScreen(book: favs[i]))),
-                          ),
-                        ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                child: Row(children: [
+                  _stat('${loans.length}', '대출 중', LC.ink, () => setState(() => _tab = 0)),
+                  const SizedBox(width: 10),
+                  _stat('${resv.length}', '예약', LC.ink, () => setState(() => _tab = 1)),
+                  const SizedBox(width: 10),
+                  _stat('${repo.overdueCount}', '연체', repo.overdueCount == 0 ? LC.green : LC.primary, null),
                 ]),
+              ),
+              UnderlineTabs(
+                labels: ['대출 중 ${loans.length}', '예약 ${resv.length}', '대출 이력'],
+                index: _tab,
+                onChanged: (i) => setState(() => _tab = i),
               ),
             ]),
-          ),
+            Expanded(
+              child: ListView(padding: const EdgeInsets.fromLTRB(16, 20, 16, 24), children: [
+                Gap(12, children: switch (_tab) {
+                  0 => [
+                      if (loans.isEmpty) const CardBox(child: EmptyState(icon: Icons.menu_book_outlined, title: '대출 중인 책이 없어요')),
+                      for (final l in loans) _LoanCard(loan: l),
+                      _historyLink(repo.history.length),
+                    ],
+                  1 => [
+                      if (resv.isEmpty) const CardBox(child: EmptyState(icon: Icons.bookmark_border, title: '예약한 책이 없어요')),
+                      for (final r in resv) _ReservationCard(reservation: r),
+                    ],
+                  _ => [
+                      for (final b in repo.history) BookItem(book: b, onTap: () => pushLibrary<void>(context, BookDetailScreen(book: b))),
+                      if (repo.favorites.isNotEmpty) ...[
+                        const Padding(padding: EdgeInsets.only(top: 12), child: SectionTitle('관심도서')),
+                        for (final id in repo.favorites)
+                          if (repo.bookById(id) case final b?) BookItem(book: b, onTap: () => pushLibrary<void>(context, BookDetailScreen(book: b))),
+                      ],
+                    ],
+                }),
+              ]),
+            ),
+          ]),
         );
       },
+    );
+  }
+
+  Widget _stat(String n, String label, Color color, VoidCallback? onTap) => Expanded(
+        child: Box(
+          color: LC.bg,
+          radius: 14,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          onTap: onTap,
+          child: Column(children: [
+            Text(n, style: ts(22, w9, color, height: 1.2)),
+            Text(label, style: ts(12.5, w5, LC.sub)),
+          ]),
+        ),
+      );
+
+  Widget _historyLink(int count) => Box(
+        color: LC.white,
+        radius: 18,
+        padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+        onTap: () => setState(() => _tab = 2),
+        child: Row(children: [
+          Box(width: 40, height: 40, radius: 12, color: LC.bg, alignment: Alignment.center, child: const Ico('history_20', size: 20)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('지난 대출 이력', style: ts(15, w7, LC.ink, ls: -0.15)),
+              const SizedBox(height: 1),
+              Text('이번 학기 $count권 읽었어요', style: ts(12.5, w4, LC.sub, ls: -0.125)),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          const Ico('chev_right_18', size: 18),
+        ]),
+      );
+}
+
+/// Figma LoanCard: 표지 · D-day · 제목 · 날짜 · 대출 기간 막대 · 연장하기
+class _LoanCard extends StatelessWidget {
+  const _LoanCard({required this.loan});
+  final Loan loan;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = loan;
+    final urgent = isUrgent(l.due);
+    final span = l.due.difference(l.loanedAt).inDays.clamp(1, 365).toInt();
+    final passed = DateTime.now().difference(l.loanedAt).inDays.clamp(0, span).toInt();
+    return CardBox(
+      padding: const EdgeInsets.all(16),
+      child: Gap(14, children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => pushLibrary<void>(context, BookDetailScreen(book: l.book)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            BookCover(l.book, width: 60, height: 84),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Gap(6, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                DdayTag(l.due, big: true),
+                Text(l.book.title, style: ts(16, w7, LC.ink, ls: -0.16)),
+                Text('대출 ${mmdd(l.loanedAt)} · 반납예정 ${mmddWd(l.due)}', style: ts(12.5, w4, LC.sub, ls: -0.125)),
+              ]),
+            ),
+          ]),
+        ),
+        Semantics(label: '대출 기간 ${(passed / span * 100).round()}% 지남', child: ProgressBar(value: passed / span, color: urgent ? LC.primary : LC.green, height: 6)),
+        Row(children: [
+          Expanded(child: Text('연장 ${l.renewLeft}회 남음', style: ts(12.5, w5, LC.mute, ls: -0.125))),
+          const SizedBox(width: 10),
+          Btn(
+            '연장하기',
+            kind: urgent ? BtnKind.primary : BtnKind.outline,
+            height: 40,
+            radius: 12,
+            fontSize: 14,
+            onTap: l.renewLeft > 0 ? () => renewWithMessage(context, l) : null,
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _ReservationCard extends StatelessWidget {
+  const _ReservationCard({required this.reservation});
+  final Reservation reservation;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = reservation;
+    return CardBox(
+      padding: const EdgeInsets.all(16),
+      onTap: () => pushLibrary<void>(context, BookDetailScreen(book: r.book)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        BookCover(r.book, width: 60, height: 84),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Gap(6, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Tag('대기 ${r.order}번', color: LC.blue, background: LC.blueSoft, fontSize: 12, weight: w9, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), radius: 6),
+            Text(r.book.title, style: ts(16, w7, LC.ink, ls: -0.16)),
+            Text('${r.campus.fullName} · 반납되면 알려드려요', style: ts(12.5, w4, LC.sub, ls: -0.125)),
+          ]),
+        ),
+      ]),
     );
   }
 }
