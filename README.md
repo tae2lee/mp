@@ -1,17 +1,11 @@
-# fluuter_lab
+작업 내용
 
-A new Flutter project.
+도서관 홈: 캠퍼스 선택, 열람실 남은 좌석, 내 대출 현황, 공지사항
+자료 검색: 도서명·저자·ISBN 검색, 대출가능·캠퍼스·전자자료 필터, 정렬
+도서 상세: 소장 현황, 서가 위치 그림, 청구기호 크게 보기
+열람실 좌석: 실시간 좌석 배치도(30초마다 갱신), 확대·이동
+모바일 학생증: 학번 바코드(시연용)
+내 서재: 대출 중·예약·대출 이력, 대출 연장
+데이터
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+열람실 좌석은 도서관 좌석 서버(http://210.119.152.17)에서 실시간으로 받아 오고, 나머지는 샘플 데이터입니다. 서버에 연결되지 않으면 샘플로 대신 보여 줍니다.
