@@ -1,17 +1,112 @@
-# fluuter_lab
+# 스마트모바일 리디자인: 도서관 탭
 
-A new Flutter project.
+국립한국교통대학교 스마트모바일 앱 리디자인 프로젝트(모바일프로그래밍 4조)에서 이태희가 맡은 도서관 탭입니다. Figma 시안(01~06)을 Flutter로 옮겼고, 열람실 좌석은 도서관 좌석 서버에서 실시간으로 받아 옵니다.
 
-## Getting Started
+## 화면 구성
 
-This project is a starting point for a Flutter application.
+도서관 탭 아래쪽 바에는 홈, 검색, 모바일 학생증, 열람실, 내서재가 있습니다. 가운데 빨간 원 버튼을 누르면 학생증이 열립니다.
 
-A few resources to get you started if this is your first Flutter project:
+### 도서관 홈 (Figma 01)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- 중앙도서관(충주), 증평도서관, 의왕도서관 중에서 캠퍼스를 고릅니다.
+- 검색창을 누르면 검색 화면으로 넘어가면서 입력란에 바로 커서가 갑니다.
+- 모바일 학생증 카드가 있습니다.
+- 열람실 실시간 현황에서 열람실마다 남은 좌석 수와 기준 시각을 보여 줍니다. 열람실 하나를 누르면 그 방의 배치도로 이동합니다.
+- 내 대출 현황에서 반납일과 남은 연장 횟수를 보고 바로 연장할 수 있습니다.
+- 도서관 공지사항이 최신순으로 나오고, 더보기로 전체 목록을 엽니다.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### 자료 검색 (Figma 02)
+
+- 도서명, 저자, ISBN으로 검색합니다. 입력을 멈추고 0.3초가 지나면 결과가 바뀝니다.
+- 대출가능만, 캠퍼스(충주·증평·의왕), 전자자료로 거를 수 있습니다.
+- 정렬은 정확도순, 최신순, 서명순입니다.
+- 검색 전에는 인기 검색어와 최근 검색어를 보여 줍니다.
+- 결과 목록에서 대출 가능 여부와 소장 위치를 바로 확인할 수 있습니다.
+
+### 도서 상세 (Figma 03)
+
+- 표지, 서지 정보, 캠퍼스별 소장 현황을 보여 줍니다.
+- 서가 배치 그림에 책의 위치를 표시합니다.
+- 청구기호를 크게 띄워 서가에서 찾기 쉽게 했습니다.
+- 관심 도서로 담을 수 있습니다.
+
+### 열람실 좌석 (Figma 04)
+
+- 좌석 배치도에서 빈 좌석, 사용 중인 좌석, 사용할 수 없는 좌석, 내 좌석을 색으로 나눕니다.
+- 30초마다 자동으로 새로 고칩니다.
+- 배치도가 화면보다 넓으면 밀어서 보거나 두 손가락으로 확대할 수 있습니다.
+- 빈 좌석을 고르면 아래에 좌석 배정 버튼이 나옵니다. 배정은 기기 안에만 표시되고, 실제 배정과 반납은 키오스크에서 합니다.
+
+### 모바일 학생증 (Figma 05)
+
+- 이름, 학과, 학번, 재학 상태를 보여 줍니다.
+- 학번을 Code 128 바코드로 그리고, 3분마다 새 바코드로 바뀌는 타이머가 있습니다(시연용).
+- 이름 부분을 길게 누르면 학생증 정보를 고칠 수 있습니다.
+- 기존 앱의 HCE 학생증은 동작하지 않아 리뉴얼 범위에서 뺐습니다. 출입 게이트가 어떤 바코드 형식을 읽는지는 도서관에 확인해야 합니다.
+
+### 내 서재 (Figma 06)
+
+- 대출 중, 예약, 대출 이력을 탭으로 나눠 보여 줍니다.
+- 대출 카드에는 D-day, 대출일과 반납일, 대출 기간 막대, 연장하기 버튼이 있습니다. 연장하면 반납일이 7일 늘어납니다(시연 동작).
+
+### 공지사항
+
+- 도서관 공지 전체 목록입니다. 본문은 도서관 홈페이지에서 열립니다.
+
+## 데이터
+
+| 기능 | 출처 |
+| --- | --- |
+| 열람실 좌석 | 도서관 좌석 서버 `http://210.119.152.17` 실시간 (기본으로 켜짐) |
+| 공지, 책 표지 | 중계 서버를 켰을 때만 실시간 (`LIBRARY_API`) |
+| 검색, 내 서재, 학생증 | 샘플 데이터 |
+
+실시간 호출이 실패하면 샘플 데이터로 대신 보여 주고, 화면 위에 오프라인 안내를 띄웁니다. 주소는 빌드할 때 바꿀 수 있습니다.
+
+```
+flutter run --dart-define=SEAT_API=http://210.119.152.17
+flutter run --dart-define=LIBRARY_API=http://10.0.2.2:8787
+```
+
+## 코드 구조
+
+```
+lib/library/
+  library_tab.dart          도서관 탭, 아래쪽 바, 도서관 홈
+  library_repository.dart   데이터 창구 (ChangeNotifier)
+  library_colors.dart       색, 글꼴, 테마 (libraryThemed)
+  models.dart               캠퍼스, 도서, 좌석, 대출 모델
+  sample_data.dart          샘플 데이터
+  widgets.dart              공통 위젯 (카드, 태그, 아이콘 등)
+  barcode.dart              Code 128 바코드 그리기
+  links.dart                도서관 홈페이지 링크
+  screens/
+    search_screen.dart       자료 검색
+    book_detail_screen.dart  도서 상세
+    seats_screen.dart        열람실 좌석
+    student_id_sheet.dart    모바일 학생증
+    my_library_screen.dart   내 서재
+    notices_screen.dart      공지사항
+assets/library/icons/       Figma에서 내보낸 SVG 아이콘 39개
+```
+
+화면은 `LibraryRepository`만 부르고, 상태 관리 패키지 없이 Flutter 기본 `ChangeNotifier` 하나로 화면 사이의 변경을 알립니다.
+
+## 실행
+
+```
+flutter pub get
+flutter run
+```
+
+사용 패키지는 `flutter_svg`(아이콘)와 `google_fonts`(Noto Sans KR)입니다. Android에서 좌석 서버에 붙으려면 `INTERNET` 권한과, `210.119.152.17`만 평문 통신을 허용하는 `network_security_config.xml`이 필요합니다. 둘 다 이 저장소에 들어 있습니다.
+
+Pixel 7 에뮬레이터에서 여섯 화면 모두 동작을 확인했습니다.
+
+## 앱 본체에 붙이기
+
+```dart
+LibraryTab(showNav: false)
+```
+
+4조 통합본에서는 메인 앱의 하단 탭 안에 넣으면서 `showNav: false`로 도서관 자체의 아래쪽 바를 숨겼습니다. 이 옵션은 통합본에서 추가했고, 이 저장소의 `LibraryTab`에는 아직 없습니다. 검색, 열람실, 내서재, 학생증은 도서관 홈의 카드에서 들어갈 수 있습니다.
