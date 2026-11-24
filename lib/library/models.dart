@@ -9,6 +9,9 @@ enum Campus {
   const Campus(this.label, this.short, this.zip, this.address, this.tel);
   final String label, short, zip, address, tel;
 
+  /// 화면에 쓰는 정식 이름. 예: 충주 중앙도서관, 증평도서관
+  String get fullName => this == Campus.chungju ? '충주 $label' : label;
+
   static Campus? byName(String? name) => Campus.values.where((c) => c.name == name).firstOrNull;
 }
 
@@ -32,8 +35,8 @@ class ReadingRoom {
   final String? floor; // 예: 3층
   final String? openTime, closeTime; // 'HHmm' (예: '0500', '2359')
 
-  /// 운영 시간 문자열. 예: 05:00~23:59
-  String? get hours => openTime == null || closeTime == null ? null : '${_hm(openTime!)}~${_hm(closeTime!)}';
+  /// 운영 시간 문자열. 예: 07:00 ~ 23:00
+  String? get hours => openTime == null || closeTime == null ? null : '${_hm(openTime!)} ~ ${_hm(closeTime!)}';
 
   /// 지금 운영 중인지. 시간을 모르면 true
   bool isOpenAt(DateTime t) {
@@ -90,22 +93,31 @@ class Seat {
 }
 
 class RoomDetail {
-  const RoomDetail({required this.room, required this.seats, required this.exactLayout, required this.updatedAt});
+  const RoomDetail({required this.room, required this.seats, required this.exactLayout, required this.updatedAt, this.zone});
   final ReadingRoom room;
   final List<Seat> seats;
   final bool exactLayout; // false 면 "예시 배치" 안내를 띄움
   final DateTime updatedAt;
+
+  /// 샘플 배치의 구역 이름(예: A구역). 있으면 좌석 번호를 A-17 처럼 쓰고 창가·출입구를 표시
+  final String? zone;
+
+  String seatLabel(int no) => zone == null ? '$no' : '${zone!.substring(0, 1)}-$no';
 }
 
 enum HoldingStatus { available, loaned, reference }
 
 class Holding {
-  const Holding({required this.campus, required this.location, required this.callNo, required this.status, this.due});
+  const Holding({required this.campus, required this.location, required this.callNo, required this.status, this.due, this.regNo});
   final Campus campus;
-  final String location;
+  final String location; // 예: 3층 일반자료실
   final String callNo;
   final HoldingStatus status;
   final DateTime? due;
+  final String? regNo; // 등록번호
+
+  /// 층만 (예: 3층)
+  String get floor => location.split(' ').first;
 }
 
 enum BookType { book, ebook }
@@ -119,6 +131,8 @@ class Book {
     required this.subject,
     this.type = BookType.book,
     this.isbn,
+    this.pages,
+    this.ebookFormat,
     this.coverColor = 0xFF5B6070,
     this.holdings = const [],
   });
@@ -130,6 +144,8 @@ class Book {
   final String subject;
   final BookType type;
   final String? isbn; // 표지 이미지를 찾을 때 사용
+  final int? pages;
+  final String? ebookFormat; // 예: EPUB
   final int coverColor; // 표지가 없을 때 쓰는 단색
   final List<Holding> holdings;
 

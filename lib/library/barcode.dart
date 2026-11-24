@@ -44,9 +44,14 @@ List<int> code128Modules(String text) =>
     [for (final v in code128Values(text)) for (final ch in _patterns[v].split('')) int.parse(ch)];
 
 class Code128Barcode extends StatelessWidget {
-  const Code128Barcode(this.data, {super.key, this.height = 90});
+  const Code128Barcode(this.data, {super.key, this.height = 90, this.color = Colors.black, this.padding = const EdgeInsets.symmetric(horizontal: 12), this.fill = false});
   final String data;
   final double height;
+  final Color color;
+  final EdgeInsetsGeometry padding;
+
+  /// true 면 폭을 꽉 채움(막대 폭이 소수 픽셀이 될 수 있음). false 면 선명하게 정수 픽셀로 맞춤
+  final bool fill;
 
   @override
   Widget build(BuildContext context) {
@@ -61,25 +66,27 @@ class Code128Barcode extends StatelessWidget {
       // 리더기가 읽을 수 있게 다크 모드에서도 흰 바탕에 검은 막대
       child: Container(
         color: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: padding,
         height: height,
-        child: CustomPaint(size: Size.infinite, painter: _BarcodePainter(modules)),
+        child: CustomPaint(size: Size.infinite, painter: _BarcodePainter(modules, color, fill)),
       ),
     );
   }
 }
 
 class _BarcodePainter extends CustomPainter {
-  _BarcodePainter(this.modules);
+  _BarcodePainter(this.modules, this.color, this.fill);
   final List<int> modules;
+  final Color color;
+  final bool fill;
 
   @override
   void paint(Canvas canvas, Size size) {
     final total = modules.fold<int>(0, (a, b) => a + b);
     // 막대가 흐려지지 않게 모듈 폭을 정수 픽셀에 가깝게 맞춤
-    final unit = (size.width / total).floorToDouble().clamp(1.0, 6.0).toDouble();
+    final unit = fill ? size.width / total : (size.width / total).floorToDouble().clamp(1.0, 6.0).toDouble();
     var x = (size.width - unit * total) / 2;
-    final paint = Paint()..color = Colors.black;
+    final paint = Paint()..color = color;
     for (var i = 0; i < modules.length; i++) {
       final w = modules[i] * unit;
       if (i.isEven) canvas.drawRect(Rect.fromLTWH(x, 0, w, size.height), paint);
@@ -88,5 +95,5 @@ class _BarcodePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_BarcodePainter old) => old.modules != modules;
+  bool shouldRepaint(_BarcodePainter old) => old.modules != modules || old.color != color || old.fill != fill;
 }

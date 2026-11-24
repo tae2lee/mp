@@ -3,6 +3,25 @@ import 'package:flutter/material.dart';
 /// 학교 대표색(적갈색). 앱 테마를 만들 때 ColorScheme.fromSeed(seedColor: knutRed) 로 쓴다.
 const Color knutRed = Color(0xFFA3162B);
 
+/// Figma 파일(도서관 리디자인)의 색 변수 color/* 를 그대로 옮긴 값
+abstract final class LC {
+  static const primary = Color(0xFFA3162B);
+  static const primarySoft = Color(0xFFFBECEE);
+  static const ink = Color(0xFF17191E);
+  static const sub = Color(0xFF5B6070);
+  static const mute = Color(0xFF9AA0AE);
+  static const line = Color(0xFFE6E8EE);
+  static const bg = Color(0xFFF4F5F8);
+  static const white = Color(0xFFFFFFFF);
+  static const green = Color(0xFF0E9F4F);
+  static const greenSoft = Color(0xFFE5F6EC);
+  static const amber = Color(0xFFD97A00);
+  static const amberSoft = Color(0xFFFFF3DF);
+  static const blue = Color(0xFF2F6FEB);
+  static const blueSoft = Color(0xFFE8F0FE);
+  static const seatUsed = Color(0xFFD5D9E0);
+}
+
 /// 대출 가능/대출 중, 좌석 상태 같은 "의미 색". 대표색과 따로 둔다.
 /// 앱 테마에 extensions 로 넣지 않아도, 밝기(라이트/다크)에 맞는 기본값을 쓴다.
 class StatusColors extends ThemeExtension<StatusColors> {

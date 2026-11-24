@@ -138,12 +138,21 @@ class LibraryRepository extends ChangeNotifier {
     final seats = _withMySeat(id, [
       for (final e in layout.entries) Seat(no: e.key, status: status[e.key]!, x: e.value.$1, y: e.value.$2),
     ]);
-    final free = seats.where((s) => s.status == SeatStatus.available).length;
     return RoomDetail(
-      room: ReadingRoom(id: id, name: seed.name, tag: seed.tag, total: seed.total, used: seed.total - free),
+      room: ReadingRoom(
+        id: id,
+        name: seed.name,
+        tag: seed.tag,
+        total: seed.total,
+        used: seed.used,
+        floor: '3층',
+        openTime: seed.open,
+        closeTime: seed.close,
+      ),
       seats: seats,
-      exactLayout: id == '3',
+      exactLayout: true,
       updatedAt: DateTime.now(),
+      zone: sample.sampleZone,
     );
   }
 
@@ -208,6 +217,12 @@ class LibraryRepository extends ChangeNotifier {
 
   List<Loan> get loans => List.unmodifiable(_loans);
   List<Reservation> get reservations => sample.sampleReservations();
+  List<Book> get history => sample.sampleHistory();
+  int get overdueCount {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _loans.where((l) => l.due.isBefore(today)).length;
+  }
 
   /// 연장 (시연 동작: 반납일 +7일)
   Loan renew(Book book) {

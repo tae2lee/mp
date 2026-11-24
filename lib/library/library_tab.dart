@@ -12,8 +12,7 @@ import 'screens/seats_screen.dart';
 import 'screens/student_id_sheet.dart';
 import 'widgets.dart';
 
-/// 도서관 탭 첫 화면 (Figma 01).
-/// 기존 웹뷰의 "아래 절반이 빈 화면"(4-16) 대신 검색·학생증·좌석·대출·공지를 한 화면에 모았다.
+/// 도서관 탭 (Figma 01~06). 아래 탭: 홈 · 검색 · 학생증 · 열람실 · 내서재
 class LibraryTab extends StatefulWidget {
   const LibraryTab({super.key});
 
@@ -22,6 +21,113 @@ class LibraryTab extends StatefulWidget {
 }
 
 class _LibraryTabState extends State<LibraryTab> {
+  int _index = 0;
+  final _searchFocus = FocusNode();
+  final _seatsKey = GlobalKey<SeatsScreenState>();
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  void _go(int i) {
+    if (i != 1) _searchFocus.unfocus();
+    setState(() => _index = i);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return libraryThemed(Scaffold(
+      backgroundColor: LC.bg,
+      body: IndexedStack(index: _index, children: [
+        LibraryHome(
+          onSearch: () {
+            _go(1);
+            _searchFocus.requestFocus();
+          },
+          onSeats: (roomId) {
+            if (roomId != null) _seatsKey.currentState?.selectRoom(roomId);
+            _go(2);
+          },
+          onMyLibrary: () => _go(3),
+        ),
+        SearchScreen(focusNode: _searchFocus, onBack: () => _go(0)),
+        SeatsScreen(key: _seatsKey, onBack: () => _go(0)),
+        MyLibraryScreen(onBack: () => _go(0)),
+      ]),
+      bottomNavigationBar: LibraryBottomNav(
+        index: _index,
+        onTap: _go,
+        onStudentId: () => showStudentIdSheet(context),
+      ),
+    ));
+  }
+}
+
+/// Figma BottomNav: 가운데 빨간 원이 모바일 학생증
+class LibraryBottomNav extends StatelessWidget {
+  const LibraryBottomNav({super.key, required this.index, required this.onTap, required this.onStudentId});
+  final int index;
+  final ValueChanged<int> onTap;
+  final VoidCallback onStudentId;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tab(int i, String icon, String label) {
+      final on = i == index;
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: on,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onTap(i),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Ico('nav_${icon}_${on ? 'on' : 'off'}', size: 24),
+              const SizedBox(height: 3),
+              Text(label, style: ts(11, on ? w7 : w5, on ? LC.primary : LC.mute)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: const BoxDecoration(color: LC.white, border: Border(top: BorderSide(color: LC.line))),
+      padding: EdgeInsets.fromLTRB(8, 8, 8, bottomInset(context)),
+      child: SizedBox(
+        height: 50,
+        child: Row(children: [
+          tab(0, 'home', '홈'),
+          tab(1, 'search', '검색'),
+          Expanded(
+            child: Center(
+              child: Tooltip(
+                message: '모바일 학생증',
+                child: Box(width: 48, height: 48, radius: 24, color: LC.primary, alignment: Alignment.center, onTap: onStudentId, child: const Ico('nav_barcode', size: 22)),
+              ),
+            ),
+          ),
+          tab(2, 'seat', '열람실'),
+          tab(3, 'book', '내서재'),
+        ]),
+      ),
+    );
+  }
+}
+
+/// 도서관 홈 (Figma 01)
+class LibraryHome extends StatefulWidget {
+  const LibraryHome({super.key, required this.onSearch, required this.onSeats, required this.onMyLibrary});
+  final VoidCallback onSearch, onMyLibrary;
+  final void Function(String? roomId) onSeats;
+
+  @override
+  State<LibraryHome> createState() => _LibraryHomeState();
+}
+
+class _LibraryHomeState extends State<LibraryHome> {
   final repo = LibraryRepository.instance;
   late Future<List<ReadingRoom>> _rooms;
   late Future<List<Notice>> _notices;
@@ -44,152 +150,197 @@ class _LibraryTabState extends State<LibraryTab> {
     await Future.wait([_rooms, _notices]);
   }
 
-  void _push(Widget page) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
-
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('도서관'),
-        actions: [
-          IconButton(tooltip: '공지사항', icon: const Icon(Icons.notifications_none), onPressed: () => _push(const NoticesScreen())),
-          IconButton(tooltip: '내 서재', icon: const Icon(Icons.bookmarks_outlined), onPressed: () => _push(const MyLibraryScreen())),
-        ],
-      ),
-      body: ListenableBuilder(
-        listenable: repo,
-        builder: (context, _) => RefreshIndicator(
+    return ListenableBuilder(
+      listenable: repo,
+      builder: (context, _) => Stack(children: [
+        RefreshIndicator(
+          color: LC.primary,
           onRefresh: _refresh,
-          child: ListView(
-            padding: const EdgeInsets.only(bottom: 24),
-            children: [
-              // 캠퍼스 선택
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: SegmentedButton<Campus>(
-                  showSelectedIcon: false,
-                  segments: [for (final c in Campus.values) ButtonSegment(value: c, label: Text(c == Campus.chungju ? '충주 중앙' : c.short))],
-                  selected: {repo.campus},
-                  onSelectionChanged: (s) => repo.setCampus(s.first),
-                ),
-              ),
-              // 검색창 (누르면 검색 화면)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: Material(
-                  color: cs.surface,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: cs.primary, width: 1.5)),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => _push(const SearchScreen()),
-                    child: SizedBox(
-                      height: 52,
-                      child: Row(children: [
-                        const SizedBox(width: 16),
-                        Icon(Icons.search, color: cs.primary),
-                        const SizedBox(width: 10),
-                        Text('도서명, 저자, 주제로 검색', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
-                      ]),
-                    ),
-                  ),
-                ),
-              ),
-              const OfflineBanner(),
-              // 모바일 학생증
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Material(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(16),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => showStudentIdSheet(context),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(children: [
-                        Icon(Icons.qr_code_2, color: cs.onPrimary, size: 32),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('모바일 학생증', style: TextStyle(color: cs.onPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-                            Text('출입·대출 바코드를 바로 열어요', style: TextStyle(color: cs.onPrimary.withValues(alpha: 0.85), fontSize: 13)),
-                          ]),
-                        ),
-                        Icon(Icons.chevron_right, color: cs.onPrimary),
-                      ]),
-                    ),
-                  ),
-                ),
-              ),
-              if (repo.mySeat != null) _MySeatCard(seat: repo.mySeat!, onTap: () => _push(SeatsScreen(roomId: repo.mySeat!.roomId))),
-
-              // 열람실 현황
-              SectionHeader('열람실 실시간 현황', action: '좌석 배치도', onAction: () => _push(const SeatsScreen())),
-              _card(FutureBuilder<List<ReadingRoom>>(
-                future: _rooms,
-                builder: (context, snap) {
-                  if (snap.hasError) return EmptyState(icon: Icons.event_seat_outlined, title: '좌석 현황을 불러오지 못했어요', onRetry: _refresh);
-                  if (!snap.hasData) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
-                  final rooms = snap.data!;
-                  final total = rooms.fold<int>(0, (a, r) => a + r.total), free = rooms.fold<int>(0, (a, r) => a + r.free);
-                  return Column(children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Text('전체 $total석 중 $free석 비어 있어요 · ${hhmm(_loadedAt)} 기준',
-                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-                    ),
-                    for (final r in rooms) _RoomRow(room: r, onTap: () => _push(SeatsScreen(roomId: r.id))),
-                    const SizedBox(height: 8),
-                  ]);
-                },
-              )),
-
-              // 내 대출 (개선점 8-8: 반납일을 첫 화면에)
-              SectionHeader('내 대출 현황', action: '전체 ${repo.loans.length}권', onAction: () => _push(const MyLibraryScreen())),
-              _card(repo.loans.isEmpty
-                  ? const EmptyState(icon: Icons.menu_book_outlined, title: '대출 중인 책이 없어요')
-                  : Column(children: [
-                      for (final (i, l) in repo.loans.indexed) ...[
-                        if (i > 0) const Divider(indent: 16, endIndent: 16),
-                        LoanRow(loan: l, onTap: () => _push(BookDetailScreen(book: l.book))),
-                      ],
-                    ])),
-
-              // 바로가기
-              const SizedBox(height: 16),
-              _card(Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(children: [
-                  _Quick(icon: Icons.bookmarks_outlined, label: '내 서재', onTap: () => _push(const MyLibraryScreen())),
-                  _Quick(icon: Icons.tablet_mac_outlined, label: 'E-Book', onTap: () => _push(const SearchScreen(initialType: BookType.ebook))),
-                  _Quick(icon: Icons.edit_note, label: '희망도서', onTap: () => openExternal(context, libraryHome)),
-                  _Quick(icon: Icons.public, label: 'RISS', onTap: () => openExternal(context, rissHome)),
-                ]),
-              )),
-
-              // 공지
-              SectionHeader('공지사항', action: '더보기', onAction: () => _push(const NoticesScreen())),
-              _card(FutureBuilder<List<Notice>>(
-                future: _notices,
-                builder: (context, snap) {
-                  if (!snap.hasData) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
-                  final list = snap.data!.where((n) => n.campus == '공통' || n.campus == repo.campus.short).take(4).toList();
-                  if (list.isEmpty) return const EmptyState(icon: Icons.campaign_outlined, title: '새 공지가 없어요');
-                  return Column(children: [for (final n in list) NoticeTile(notice: n)]);
-                },
-              )),
-
-              // 연락처: 이캠퍼스 하단처럼 맨 아래 작고 연한 글씨로
-              const _ContactFooter(),
-            ],
-          ),
+          child: ListView(padding: EdgeInsets.zero, children: [
+            _header(context),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+              child: Gap(28, children: [
+                _studentIdCard(context),
+                if (repo.mySeat != null) _MySeatCard(seat: repo.mySeat!, onTap: () => widget.onSeats(repo.mySeat!.roomId)),
+                _roomsSection(),
+                _loansSection(context),
+                _quickMenu(context),
+                _noticesSection(context),
+              ]),
+            ),
+            const _ContactFooter(),
+          ]),
         ),
-      ),
+        // 스크롤해도 상태 표시줄 뒤는 흰색으로
+        Positioned(top: 0, left: 0, right: 0, height: MediaQuery.paddingOf(context).top, child: const ColoredBox(color: LC.white)),
+      ]),
     );
   }
 
-  Widget _card(Widget child) => Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Card(child: child));
+  Widget _header(BuildContext context) => LibHeader(bottomRadius: 24, bottomPadding: 20, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 12, 0),
+          child: Row(children: [
+            IconBox('chev_left', tooltip: '뒤로', onTap: () => Navigator.maybePop(context)),
+            const SizedBox(width: 4),
+            Expanded(child: Text('도서관', style: ts(24, w9, LC.ink, ls: -0.48))),
+            IconBox('btn_bell_dot', size: 40, tooltip: '알림', onTap: () => pushLibrary<void>(context, const NoticesScreen())),
+          ]),
+        ),
+        Padding(padding: const EdgeInsets.fromLTRB(20, 12, 20, 0), child: _campusSegment()),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Box(
+            height: 52,
+            color: LC.white,
+            radius: 14,
+            border: const BorderSide(color: LC.primary, width: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            onTap: widget.onSearch,
+            child: Row(children: [
+              const Ico('search_20', size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text('도서명, 저자, ISBN 검색', style: ts(15, w4, LC.mute, ls: -0.15))),
+            ]),
+          ),
+        ),
+      ]);
+
+  Widget _campusSegment() => Box(
+        color: LC.bg,
+        radius: 12,
+        padding: const EdgeInsets.all(4),
+        child: Row(children: [
+          for (final (i, c) in Campus.values.indexed) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Expanded(
+              child: Box(
+                color: c == repo.campus ? LC.white : null,
+                radius: 9,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                alignment: Alignment.center,
+                onTap: () => repo.setCampus(c),
+                child: Text(
+                  c == repo.campus ? c.fullName : c.short,
+                  maxLines: 1,
+                  style: ts(13, c == repo.campus ? w7 : w5, c == repo.campus ? LC.ink : LC.sub),
+                ),
+              ),
+            ),
+          ],
+        ]),
+      );
+
+  Widget _studentIdCard(BuildContext context) => Box(
+        color: LC.primary,
+        radius: 18,
+        padding: const EdgeInsets.all(18),
+        onTap: () => showStudentIdSheet(context),
+        child: Row(children: [
+          Box(
+            width: 44,
+            height: 44,
+            radius: 12,
+            color: LC.white.withValues(alpha: 0.16),
+            alignment: Alignment.center,
+            child: const Ico('nav_barcode', size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('모바일 학생증', style: ts(16, w7, LC.white, ls: -0.16)),
+              const SizedBox(height: 2),
+              Text('출입·대출 바코드를 바로 열어요', style: ts(12.5, w4, LC.white, ls: -0.125)),
+            ]),
+          ),
+          const SizedBox(width: 14),
+          Box(color: LC.white, radius: 16, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), child: Text('열기', style: ts(13, w7, LC.primary))),
+        ]),
+      );
+
+  Widget _roomsSection() => Gap(12, children: [
+        SectionTitle('열람실 실시간 현황', action: '좌석 배치도', onTap: () => widget.onSeats(null)),
+        if (repo.lastError != null) const OfflineBanner(),
+        CardBox(
+          child: FutureBuilder<List<ReadingRoom>>(
+            future: _rooms,
+            builder: (context, snap) {
+              if (snap.hasError) return EmptyState(icon: Icons.event_seat_outlined, title: '좌석 현황을 불러오지 못했어요', onRetry: _refresh);
+              final rooms = snap.data;
+              return Gap(18, children: [
+                Row(children: [
+                  Expanded(child: Text('${mmddWd(_loadedAt)} ${hhmm(_loadedAt)} 기준', style: ts(12, w5, LC.mute, ls: -0.12))),
+                  const SizedBox(width: 4),
+                  GestureDetector(onTap: _refresh, child: const Ico('refresh_14', size: 14)),
+                ]),
+                if (rooms == null)
+                  const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(color: LC.primary, strokeWidth: 2.5)))
+                else
+                  for (final r in rooms) _RoomRow(room: r, onTap: () => widget.onSeats(r.id)),
+              ]);
+            },
+          ),
+        ),
+      ]);
+
+  Widget _loansSection(BuildContext context) => Gap(12, children: [
+        SectionTitle('내 대출 현황', action: '전체 ${repo.loans.length}권', onTap: widget.onMyLibrary),
+        CardBox(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          child: repo.loans.isEmpty
+              ? const EmptyState(icon: Icons.menu_book_outlined, title: '대출 중인 책이 없어요')
+              : Column(children: [
+                  for (final (i, l) in repo.loans.indexed)
+                    LoanRow(loan: l, divider: i > 0, onTap: () => pushLibrary<void>(context, BookDetailScreen(book: l.book))),
+                ]),
+        ),
+      ]);
+
+  Widget _quickMenu(BuildContext context) {
+    Widget item(String icon, String label, VoidCallback onTap) => Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Column(children: [
+              Box(width: 48, height: 48, radius: 14, color: LC.bg, alignment: Alignment.center, child: Ico(icon, size: 22)),
+              const SizedBox(height: 8),
+              Text(label, maxLines: 1, style: ts(12.5, w5, LC.ink)),
+            ]),
+          ),
+        );
+    // Figma QuickMenu: 높이 100 고정, 위 18
+    return Box(
+      height: 100,
+      color: LC.white,
+      radius: 18,
+      padding: const EdgeInsets.fromLTRB(6, 18, 6, 0),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        item('quick_monitor', '전자자료', () => pushLibrary<void>(context, const SearchScreen(initialType: BookType.ebook))),
+        item('quick_info', '이용안내', () => openExternal(context, libraryHome, title: '이용안내는 도서관 홈페이지에서 볼 수 있어요')),
+        item('quick_mega', '공지사항', () => pushLibrary<void>(context, const NoticesScreen())),
+        item('quick_building', '도서관 소개', () => openExternal(context, libraryHome, title: '도서관 소개는 홈페이지에서 볼 수 있어요')),
+      ]),
+    );
+  }
+
+  Widget _noticesSection(BuildContext context) => Gap(12, children: [
+        SectionTitle('공지사항', action: '더보기', onTap: () => pushLibrary<void>(context, const NoticesScreen())),
+        CardBox(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+          child: FutureBuilder<List<Notice>>(
+            future: _notices,
+            builder: (context, snap) {
+              if (!snap.hasData) return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: LC.primary, strokeWidth: 2.5)));
+              final list = snap.data!.take(2).toList();
+              if (list.isEmpty) return const EmptyState(icon: Icons.campaign_outlined, title: '새 공지가 없어요');
+              return Column(children: [for (final (i, n) in list.indexed) NoticeTile(notice: n, divider: i > 0)]);
+            },
+          ),
+        ),
+      ]);
 }
 
 class _RoomRow extends StatelessWidget {
@@ -199,153 +350,114 @@ class _RoomRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = congestionColor(context, room.congestion);
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
+    final color = congestionColor(room.congestion);
+    final small = ts(12.5, w5, LC.sub, ls: -0.125);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Flexible(child: Text(room.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 6),
-            StatusBadge.congestion(context, room.congestion),
-            const Spacer(),
-            Text.rich(TextSpan(style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13), children: [
-              const TextSpan(text: '잔여 '),
-              TextSpan(text: '${room.free}', style: TextStyle(color: color, fontSize: 17, fontWeight: FontWeight.w900)),
-              TextSpan(text: ' / ${room.total}석'),
-            ])),
-          ]),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: room.rate.clamp(0.02, 1.0).toDouble(),
-            minHeight: 8,
-            borderRadius: BorderRadius.circular(4),
-            color: color,
-            backgroundColor: cs.surfaceContainerHigh,
-            semanticsLabel: '${room.name} 이용률',
-            semanticsValue: '${(room.rate * 100).round()}%',
-          ),
+      child: Gap(8, children: [
+        Row(children: [
+          Flexible(child: Text(room.shortName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(15, w7, LC.ink, ls: -0.15))),
+          const SizedBox(width: 6),
+          CongestionTag(room.congestion),
+          const Expanded(child: SizedBox()),
+          Text.rich(TextSpan(children: [
+            TextSpan(text: '잔여 ', style: small),
+            TextSpan(text: '${room.free}', style: ts(17, w9, color)),
+            TextSpan(text: ' / ${room.total}석', style: small),
+          ])),
         ]),
-      ),
+        Semantics(
+          label: '${room.shortName} 이용률 ${(room.rate * 100).round()}%',
+          child: ProgressBar(value: room.rate, color: color),
+        ),
+      ]),
     );
   }
 }
 
+/// 이캠퍼스 하단처럼 맨 아래 작고 연한 글씨로 캠퍼스 연락처
 class _ContactFooter extends StatelessWidget {
   const _ContactFooter();
 
   @override
   Widget build(BuildContext context) {
-    final style = TextStyle(
-      fontSize: 11,
-      height: 1.6,
-      color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-    );
+    final style = ts(11, w4, LC.mute.withValues(alpha: 0.8), height: 1.6);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Divider(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.6)),
-        const SizedBox(height: 8),
+        const Divider(color: LC.line, height: 1, thickness: 1),
+        const SizedBox(height: 12),
         for (final c in Campus.values) Text('[${c.label}] ${c.zip} ${c.address} TEL ${c.tel}', style: style),
       ]),
     );
   }
 }
 
+/// 좌석을 표시해 두었을 때만 홈에 나오는 카드
 class _MySeatCard extends StatelessWidget {
   const _MySeatCard({required this.seat, required this.onTap});
   final MySeat seat;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final c = context.status;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Card(
-        child: ListTile(
-          onTap: onTap,
-          leading: Icon(Icons.event_seat, color: c.info),
-          title: Text('내 좌석 ${seat.no}번', style: const TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: Text('${hhmm(seat.at)}부터 이용 중'),
-          trailing: const Icon(Icons.chevron_right),
-        ),
-      ),
-    );
-  }
-}
-
-class _Quick extends StatelessWidget {
-  const _Quick({required this.icon, required this.label, required this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+  Widget build(BuildContext context) => CardBox(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
-              child: Icon(icon, color: cs.onSurface),
-            ),
-            const SizedBox(height: 6),
-            Text(label, style: const TextStyle(fontSize: 13)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-/// 대출 한 줄: 표지, 제목, D-day, 반납일, 연장 버튼
-class LoanRow extends StatelessWidget {
-  const LoanRow({super.key, required this.loan, this.onTap});
-  final Loan loan;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final urgent = daysUntil(loan.due) <= 3;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(children: [
-          BookCover(loan.book, width: 40),
+          Box(width: 40, height: 40, radius: 12, color: LC.primarySoft, alignment: Alignment.center, child: const Ico('nav_seat_on', size: 22)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(loan.book.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              Row(children: [
-                StatusBadge(ddayText(loan.due),
-                    color: urgent ? cs.primary : cs.onSurfaceVariant, background: urgent ? cs.primaryContainer : cs.surfaceContainerHigh, dot: false),
-                const SizedBox(width: 6),
-                Flexible(child: Text('반납예정 ${mmddWd(loan.due)}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))),
-              ]),
+              Text('내 좌석 ${seat.no}번', style: ts(15, w7, LC.ink, ls: -0.15)),
+              Text('${hhmm(seat.at)}부터 이용 중', style: ts(12.5, w4, LC.sub, ls: -0.125)),
             ]),
           ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: loan.renewLeft > 0 ? () => renewWithMessage(context, loan) : null,
-            child: const Text('연장'),
-          ),
+          const Ico('chev_right_18', size: 18),
         ]),
-      ),
-    );
-  }
+      );
+}
+
+/// 대출 한 줄 (Figma LoanRow): 표지, 제목, D-day, 반납일, 연장 버튼
+class LoanRow extends StatelessWidget {
+  const LoanRow({super.key, required this.loan, this.onTap, this.divider = false});
+  final Loan loan;
+  final VoidCallback? onTap;
+  final bool divider;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          foregroundDecoration: divider ? const BoxDecoration(border: rowDivider) : null,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(children: [
+            BookCover(loan.book, width: 40, height: 56, radius: 4),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Gap(3, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(loan.book.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(14.5, w7, LC.ink, ls: -0.145)),
+                Row(children: [
+                  DdayTag(loan.due),
+                  const SizedBox(width: 6),
+                  Flexible(child: Text('반납예정 ${mmddWd(loan.due)}', maxLines: 1, style: ts(12.5, w4, LC.sub, ls: -0.125))),
+                ]),
+              ]),
+            ),
+            const SizedBox(width: 12),
+            Btn(
+              '연장',
+              kind: BtnKind.outline,
+              height: null,
+              radius: 10,
+              fontSize: 13,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              onTap: loan.renewLeft > 0 ? () => renewWithMessage(context, loan) : null,
+            ),
+          ]),
+        ),
+      );
 }
 
 void renewWithMessage(BuildContext context, Loan loan) {
@@ -357,18 +469,26 @@ void renewWithMessage(BuildContext context, Loan loan) {
   }
 }
 
+/// 공지 한 줄: 캠퍼스 · 제목 · 날짜
 class NoticeTile extends StatelessWidget {
-  const NoticeTile({super.key, required this.notice});
+  const NoticeTile({super.key, required this.notice, this.divider = false});
   final Notice notice;
+  final bool divider;
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ListTile(
-      onTap: () => openExternal(context, notice.url ?? libraryHome),
-      leading: StatusBadge(notice.campus, color: cs.onSurfaceVariant, background: cs.surfaceContainerHigh, dot: false),
-      title: Text(notice.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Text(mmdd(notice.date), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-    );
-  }
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => openExternal(context, notice.url ?? libraryHome),
+        child: Container(
+          foregroundDecoration: divider ? const BoxDecoration(border: rowDivider) : null,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Row(children: [
+            Tag(notice.campus, color: LC.sub, background: LC.bg, padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(notice.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(14, w5, LC.ink, ls: -0.14))),
+            const SizedBox(width: 10),
+            Text(mmdd(notice.date), style: ts(12, w4, LC.mute, ls: -0.12)),
+          ]),
+        ),
+      );
 }
