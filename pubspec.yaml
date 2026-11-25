@@ -37,6 +37,8 @@ dependencies:
   # 도서관 탭: Figma 아이콘(SVG)과 글꼴(Noto Sans KR)
   flutter_svg: ^2.0.17
   google_fonts: ^6.2.1
+  # 이용안내·도서관 소개·공지 링크를 브라우저로 열기
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

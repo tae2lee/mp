@@ -7,8 +7,7 @@ plugins {
 android {
     namespace = "com.example.fluuter_lab"
     compileSdk = flutter.compileSdkVersion
-    // 컴퓨터에 설치된 NDK 버전 (원래: flutter.ndkVersion = 28.2.13676358, 미설치)
-    ndkVersion = "30.0.16248370"
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

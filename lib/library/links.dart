@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'library_colors.dart';
 import 'widgets.dart';
 
-/// 앱 안에 아직 없는 기능(희망도서, 전자책 열람 등)은 학교 페이지 주소를 알려 준다.
-///
-/// 지금은 외부 패키지 없이 주소를 보여 주고 복사하는 창만 띄운다.
-/// 브라우저로 바로 열려면 `flutter pub add url_launcher` 후 아래 주석의 코드로 바꾸면 된다.
-///
-///   import 'package:url_launcher/url_launcher.dart';
-///   await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+/// 앱 안에 없는 기능(이용안내, 도서관 소개, 공지 본문, 전자책 열람)은 학교 페이지를 브라우저로 바로 연다.
 const libraryHome = 'https://chains.ut.ac.kr/index.ax';
 const rissHome = 'https://www.riss.kr';
 
-Future<void> openExternal(BuildContext context, String url, {String? title}) {
+/// 버튼을 누르면 바로 브라우저로 연다. 열 수 없는 기기에서만 주소 복사 창을 띄운다.
+Future<void> openExternal(BuildContext context, String url, {String? title}) async {
+  var opened = false;
+  try {
+    opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } on PlatformException {
+    opened = false; // 브라우저 앱이 없는 기기
+  }
+  if (opened || !context.mounted) return;
+  await _showUrlSheet(context, url, title: title);
+}
+
+Future<void> _showUrlSheet(BuildContext context, String url, {String? title}) {
   return showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -24,7 +31,7 @@ Future<void> openExternal(BuildContext context, String url, {String? title}) {
       padding: EdgeInsets.fromLTRB(24, 10, 24, bottomInset(sheetContext, min: 24)),
       child: Gap(14, children: [
         Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: LC.line, borderRadius: BorderRadius.circular(3)))),
-        Text(title ?? '학교 페이지에서 열어 주세요', style: ts(17, w7, LC.ink, ls: -0.17)),
+        Text(title ?? '브라우저를 열지 못했어요. 주소를 복사해 열어 주세요', style: ts(17, w7, LC.ink, ls: -0.17)),
         Box(
           color: LC.bg,
           radius: 12,

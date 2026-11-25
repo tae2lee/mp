@@ -73,7 +73,7 @@ enum Congestion {
   final String label;
 }
 
-enum SeatStatus { available, used, unavailable, mine }
+enum SeatStatus { available, used, unavailable }
 
 class Seat {
   const Seat({required this.no, required this.status, this.x, this.y});
@@ -191,13 +191,6 @@ class Notice {
         campus: (j['campus'] as String?) ?? '공통',
         url: j['url'] as String?,
       );
-}
-
-class MySeat {
-  const MySeat({required this.roomId, required this.no, required this.at});
-  final String roomId;
-  final int no;
-  final DateTime at;
 }
 
 class StudentProfile {
