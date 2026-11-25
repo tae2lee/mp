@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 
 import '../library_colors.dart';
 import '../library_repository.dart';
-import '../links.dart';
 import '../models.dart';
 import '../sample_data.dart' show roomSeeds;
 import '../widgets.dart';
 
 /// 열람실 좌석 (Figma 04). 30초마다 자동 갱신. 큰 열람실은 배치도를 밀어서 보거나 확대
+/// 좌석 서버는 조회만 받으므로 앱은 빈자리를 보여 주기만 하고, 배정은 도서관 키오스크에서 한다.
 class SeatsScreen extends StatefulWidget {
   const SeatsScreen({super.key, this.roomId = '1', this.onBack});
   final String roomId;
@@ -25,31 +25,19 @@ class SeatsScreenState extends State<SeatsScreen> {
   late String _roomId = widget.roomId;
   late Future<RoomDetail> _detail;
   List<ReadingRoom> _roomList = const [];
-  int? _selected;
   Timer? _timer;
-  MySeat? _lastMySeat;
 
   @override
   void initState() {
     super.initState();
-    _lastMySeat = repo.mySeat;
     _load();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => setState(_load));
-    repo.addListener(_onRepo);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    repo.removeListener(_onRepo);
     super.dispose();
-  }
-
-  // 배정·퇴실했을 때만 다시 불러옴
-  void _onRepo() {
-    if (repo.mySeat == _lastMySeat) return;
-    _lastMySeat = repo.mySeat;
-    setState(_load);
   }
 
   void _load() {
@@ -64,7 +52,6 @@ class SeatsScreenState extends State<SeatsScreen> {
     if (id == _roomId) return;
     setState(() {
       _roomId = id;
-      _selected = null;
       _load();
     });
   }
@@ -72,8 +59,6 @@ class SeatsScreenState extends State<SeatsScreen> {
   List<(String, String)> get _tabs => _roomList.isNotEmpty
       ? [for (final r in _roomList) (r.id, r.shortName)]
       : [for (final s in roomSeeds) (s.id, s.name)];
-
-  String _roomName(String id) => _tabs.where((t) => t.$1 == id).firstOrNull?.$2 ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +97,7 @@ class SeatsScreenState extends State<SeatsScreen> {
                     ]),
                   ]),
                 ),
-                _cta(d),
+                const _KioskNote(),
               ]);
             },
           ),
@@ -137,58 +122,28 @@ class SeatsScreenState extends State<SeatsScreen> {
           if (nums.isNotEmpty) Text('${nums.reduce(math.min)} ~ ${nums.reduce(math.max)}번', style: ts(12.5, w5, LC.mute, ls: -0.125)),
         ]),
         if (d.zone != null) landmark('창가', LC.blue, LC.blueSoft),
-        SeatMap(
-          seats: d.seats,
-          selected: _selected,
-          selectable: repo.mySeat == null,
-          onSeatTap: (no) => setState(() => _selected = _selected == no ? null : no),
-        ),
+        SeatMap(seats: d.seats),
         if (d.zone != null) landmark('출입구', LC.green, LC.greenSoft),
         const _Legend(),
       ]),
     );
   }
+}
 
-  /// Figma SeatCTA: 선택한 좌석 + 좌석 배정받기
-  Widget _cta(RoomDetail d) {
-    final mine = repo.mySeat;
-    final String caption, title;
-    final Widget button;
-    if (mine != null) {
-      caption = '내 좌석 · ${hhmm(mine.at)}부터';
-      title = '${_roomName(mine.roomId)} ${mine.roomId == _roomId ? d.seatLabel(mine.no) : '${mine.no}'}번';
-      button = Btn('퇴실하기', kind: BtnKind.outline, onTap: () async {
-        await repo.releaseSeat();
-        if (mounted) showMessage(context, '내 좌석 표시를 지웠어요. 반납은 키오스크에서 해 주세요.');
-      });
-    } else {
-      caption = '선택한 좌석';
-      title = _selected == null ? '좌석을 눌러 선택해 주세요' : '${d.room.shortName} ${d.seatLabel(_selected!)}번';
-      button = Btn('좌석 배정받기', onTap: _selected == null
-          ? null
-          : () async {
-              final no = _selected!;
-              await repo.assignSeat(_roomId, no);
-              _selected = null;
-              // 좌석 서버는 조회만 받으므로 실제 배정은 키오스크에서 해야 한다
-              if (mounted) showMessage(context, '$no번 좌석을 내 좌석으로 표시했어요. 배정은 도서관 키오스크에서 해 주세요.');
-            });
-    }
-    return Container(
-      decoration: const BoxDecoration(color: LC.white, border: Border(top: BorderSide(color: LC.line))),
-      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(caption, style: ts(12, w5, LC.sub, ls: -0.12)),
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(16, w7, _selected == null && mine == null ? LC.mute : LC.ink, ls: -0.16)),
-          ]),
-        ),
-        const SizedBox(width: 12),
-        button,
-      ]),
-    );
-  }
+/// 아래 안내 줄: 앱은 좌석을 보여 주기만 한다
+class _KioskNote extends StatelessWidget {
+  const _KioskNote();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: const BoxDecoration(color: LC.white, border: Border(top: BorderSide(color: LC.line))),
+        padding: EdgeInsets.fromLTRB(20, 14, 20, bottomInset(context, min: 14)),
+        child: Row(children: [
+          const Icon(Icons.info_outline, size: 18, color: LC.sub),
+          const SizedBox(width: 8),
+          Expanded(child: Text('좌석 배정과 반납은 열람실 앞 키오스크에서 해 주세요.', style: ts(13, w5, LC.sub, ls: -0.13))),
+        ]),
+      );
 }
 
 class _Summary extends StatelessWidget {
@@ -234,11 +189,8 @@ class _Summary extends StatelessWidget {
 
 /// 좌석 배치도. 좌표 1칸 = 좌석 30 + 간격 6. 카드보다 넓으면 밀어서 보고 두 손가락으로 확대
 class SeatMap extends StatelessWidget {
-  const SeatMap({super.key, required this.seats, required this.onSeatTap, this.selected, this.selectable = true});
+  const SeatMap({super.key, required this.seats});
   final List<Seat> seats;
-  final int? selected;
-  final bool selectable;
-  final ValueChanged<int> onSeatTap;
 
   static const _unit = 36.0, _seat = 30.0;
 
@@ -262,12 +214,7 @@ class SeatMap extends StatelessWidget {
           Positioned(
             left: px(s) * _unit,
             top: py(s) * _unit,
-            child: _SeatBox(
-              seat: s,
-              selected: s.no == selected,
-              enabled: selectable && s.status == SeatStatus.available,
-              onTap: () => onSeatTap(s.no),
-            ),
+            child: _SeatBox(seat: s),
           ),
       ]),
     );
@@ -295,22 +242,17 @@ class SeatMap extends StatelessWidget {
 }
 
 class _SeatBox extends StatelessWidget {
-  const _SeatBox({required this.seat, required this.selected, required this.enabled, required this.onTap});
+  const _SeatBox({required this.seat});
   final Seat seat;
-  final bool selected, enabled;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final (Color bg, Color fg, BorderSide? border, String label) = selected || seat.status == SeatStatus.mine
-        ? (LC.primary, LC.white, null, selected ? '선택됨' : '내 좌석')
-        : switch (seat.status) {
-            SeatStatus.available => (LC.white, LC.green, const BorderSide(color: LC.green, width: 1.5), '선택 가능'),
-            SeatStatus.used => (LC.seatUsed, LC.mute, null, '사용 중'),
-            _ => (LC.bg, LC.seatUsed, null, '이용 불가'),
-          };
+    final (Color bg, Color fg, BorderSide? border, String label) = switch (seat.status) {
+      SeatStatus.available => (LC.white, LC.green, const BorderSide(color: LC.green, width: 1.5), '빈 좌석'),
+      SeatStatus.used => (LC.seatUsed, LC.mute, null, '사용 중'),
+      SeatStatus.unavailable => (LC.bg, LC.seatUsed, null, '이용 불가'),
+    };
     return Semantics(
-      button: enabled,
       label: '${seat.no}번 $label',
       child: Box(
         width: 30,
@@ -319,7 +261,6 @@ class _SeatBox extends StatelessWidget {
         color: bg,
         border: border,
         alignment: Alignment.center,
-        onTap: enabled ? onTap : null,
         child: Text('${seat.no}', style: ts(10.5, w7, fg, height: 1), textScaler: TextScaler.noScaling, maxLines: 1),
       ),
     );
@@ -337,9 +278,9 @@ class _Legend extends StatelessWidget {
           Text(t, style: ts(12, w5, LC.sub)),
         ]);
     return Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 6, children: [
-      item(LC.white, '선택 가능', border: const BorderSide(color: LC.green)),
+      item(LC.white, '빈 좌석', border: const BorderSide(color: LC.green)),
       item(LC.seatUsed, '사용 중'),
-      item(LC.primary, '선택한 좌석'),
+      item(LC.bg, '이용 불가', border: const BorderSide(color: LC.line)),
     ]);
   }
 }

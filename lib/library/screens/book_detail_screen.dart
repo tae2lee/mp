@@ -44,7 +44,7 @@ class BookDetailScreen extends StatelessWidget {
                   child: Gap(24, children: [
                     _bibInfo(),
                     if (book.type == BookType.ebook)
-                      Btn('전자책 열람하기', onTap: () => openExternal(context, libraryHome, title: '전자책은 도서관 홈페이지에서 열람해요'))
+                      Btn('전자책 열람하기', onTap: () => openExternal(context, libraryHome))
                     else ...[
                       Gap(12, children: [
                         const SectionTitle('소장 정보'),

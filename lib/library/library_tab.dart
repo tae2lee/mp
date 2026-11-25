@@ -164,7 +164,6 @@ class _LibraryHomeState extends State<LibraryHome> {
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
               child: Gap(28, children: [
                 _studentIdCard(context),
-                if (repo.mySeat != null) _MySeatCard(seat: repo.mySeat!, onTap: () => widget.onSeats(repo.mySeat!.roomId)),
                 _roomsSection(),
                 _loansSection(context),
                 _quickMenu(context),
@@ -319,9 +318,9 @@ class _LibraryHomeState extends State<LibraryHome> {
       padding: const EdgeInsets.fromLTRB(6, 18, 6, 0),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         item('quick_monitor', '전자자료', () => pushLibrary<void>(context, const SearchScreen(initialType: BookType.ebook))),
-        item('quick_info', '이용안내', () => openExternal(context, libraryHome, title: '이용안내는 도서관 홈페이지에서 볼 수 있어요')),
+        item('quick_info', '이용안내', () => openExternal(context, libraryHome)),
         item('quick_mega', '공지사항', () => pushLibrary<void>(context, const NoticesScreen())),
-        item('quick_building', '도서관 소개', () => openExternal(context, libraryHome, title: '도서관 소개는 홈페이지에서 볼 수 있어요')),
+        item('quick_building', '도서관 소개', () => openExternal(context, libraryHome)),
       ]),
     );
   }
@@ -392,30 +391,6 @@ class _ContactFooter extends StatelessWidget {
       ]),
     );
   }
-}
-
-/// 좌석을 표시해 두었을 때만 홈에 나오는 카드
-class _MySeatCard extends StatelessWidget {
-  const _MySeatCard({required this.seat, required this.onTap});
-  final MySeat seat;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => CardBox(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        onTap: onTap,
-        child: Row(children: [
-          Box(width: 40, height: 40, radius: 12, color: LC.primarySoft, alignment: Alignment.center, child: const Ico('nav_seat_on', size: 22)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('내 좌석 ${seat.no}번', style: ts(15, w7, LC.ink, ls: -0.15)),
-              Text('${hhmm(seat.at)}부터 이용 중', style: ts(12.5, w4, LC.sub, ls: -0.125)),
-            ]),
-          ),
-          const Ico('chev_right_18', size: 18),
-        ]),
-      );
 }
 
 /// 대출 한 줄 (Figma LoanRow): 표지, 제목, D-day, 반납일, 연장 버튼

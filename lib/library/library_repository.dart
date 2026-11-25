@@ -31,7 +31,6 @@ class LibraryRepository extends ChangeNotifier {
 
   Campus campus = Campus.chungju;
   StudentProfile profile = sample.sampleProfile;
-  MySeat? mySeat;
   final Set<String> favorites = {};
   final List<String> recentSearches = [];
   late List<Loan> _loans = sample.sampleLoans();
@@ -47,7 +46,7 @@ class LibraryRepository extends ChangeNotifier {
   //   GET /api/did/rooms?caller=nicom                 열람실 목록과 잔여석
   //   GET /api/seat/configs?caller=nicom&room_no=N    좌석별 위치·상태
   // 응답에 이용자 정보(user_id, user_name, phone)가 섞여 오지만 읽지 않고 버린다.
-  // 좌석 배정·반납은 이 서버가 받지 않아(조회 전용) 도서관 키오스크에서만 할 수 있다.
+  // 좌석 배정·반납은 이 서버가 받지 않아(조회 전용) 앱에는 넣지 않았다. 배정은 도서관 키오스크에서 한다.
 
   /// 좌석 서버 주소. 비우면 샘플 좌석을 보여 준다.
   /// 빌드할 때 바꾸려면: flutter run --dart-define=SEAT_API=http://...
@@ -70,7 +69,7 @@ class LibraryRepository extends ChangeNotifier {
           if (r == null) throw const HttpException('열람실 정보를 찾지 못했어요');
           return RoomDetail(
             room: _roomFromSeatApi(r),
-            seats: _withMySeat(id, _seatsFromSeatApi(seatItems)),
+            seats: _seatsFromSeatApi(seatItems),
             exactLayout: true,
             updatedAt: DateTime.now(),
           );
@@ -135,9 +134,9 @@ class LibraryRepository extends ChangeNotifier {
     final seed = sample.roomSeeds.firstWhere((r) => r.id == id);
     final layout = sample.layoutFor(id);
     final status = sample.snapshotStatus(id);
-    final seats = _withMySeat(id, [
+    final seats = [
       for (final e in layout.entries) Seat(no: e.key, status: status[e.key]!, x: e.value.$1, y: e.value.$2),
-    ]);
+    ];
     return RoomDetail(
       room: ReadingRoom(
         id: id,
@@ -154,23 +153,6 @@ class LibraryRepository extends ChangeNotifier {
       updatedAt: DateTime.now(),
       zone: sample.sampleZone,
     );
-  }
-
-  List<Seat> _withMySeat(String roomId, List<Seat> seats) {
-    final mine = mySeat;
-    if (mine == null || mine.roomId != roomId) return seats;
-    return [for (final s in seats) s.no == mine.no ? s.copyWith(status: SeatStatus.mine) : s];
-  }
-
-  /// 내 좌석 표시 (기기 메모리에만 저장. 실제 배정·반납은 키오스크에서)
-  Future<void> assignSeat(String roomId, int no) async {
-    mySeat = MySeat(roomId: roomId, no: no, at: DateTime.now());
-    notifyListeners();
-  }
-
-  Future<void> releaseSeat() async {
-    mySeat = null;
-    notifyListeners();
   }
 
   // ---------------- 공지 ----------------
